@@ -1,0 +1,5 @@
+{
+  "siteName": "Negative test: name collision",
+  "sourcePath": "../samples/negative/name-collision",
+  "workPath": "../.work/negative-name-collision"
+}

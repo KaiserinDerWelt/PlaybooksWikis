@@ -14,11 +14,13 @@ Content under `samples/` is fictional and must not be used as operational guidan
 | Path | Description |
 | --- | --- |
 | `src/PlaybookSite/` | PowerShell module. Exports `Publish-PlaybookSite`, `Invoke-PlaybookRollback` and `ConvertTo-PlaybookSlug`. |
-| `tests/PlaybookSite.Tests.ps1` | Pester 5 suite: unit tests for the pure functions, plus an offline end-to-end test tagged `Integration`. |
+| `tests/PlaybookSite.Tests.ps1` | Pester 5 suite: unit tests for the pure functions, plus `Integration` tests that build the sample set offline and run the failing cases. |
 | `config/playbooksite.config.json` | Sample configuration. Azure values are `${VAR}` placeholders resolved from the environment. |
+| `config/negative-*.config.json` | Configurations for the failing test cases in `samples/negative/`. |
 | `pipelines/publish-playbooks.yml` | Azure Pipelines definition: offline validation on pull requests, deployment from `main`. Reference only. |
-| `samples/playbooks/` | Location of the fictional playbook set (not yet added; see [Status](#status)). |
-| `samples/eval/` | Location of the agent's evaluation questions (not yet added). |
+| `samples/playbooks/` | 50 fictional playbooks in 10 categories, mapped to MITRE ATT&CK and structured on the NIST SP 800-61 lifecycle. |
+| `samples/eval/` | Evaluation set for the agent: 60 questions in `golden-questions.jsonl`. |
+| `samples/negative/` | Inputs that must stop a run: planted secrets and a name collision. |
 | `docs/architecture.md` | Architecture, pipeline stages, agent design, operational requirements. |
 | `docs/task-definition.md` | Requirements, acceptance criteria, risks and decision log. |
 
@@ -58,7 +60,7 @@ Run the tests:
 Invoke-Pester ./tests
 ```
 
-The integration test is skipped if `python -m mkdocs` is unavailable.
+Integration tests that need a site build are skipped if `python -m mkdocs` is unavailable.
 
 Run stages F1 to F7 locally, without Azure access:
 
@@ -111,15 +113,12 @@ to `secretScan.allowlist`, after review confirms a false positive.
 | Item | State |
 | --- | --- |
 | Module, stages F1 to F11 | Implemented; not yet run against Azure |
-| Pester tests | Implemented |
+| Pester tests | Implemented; 44 tests passing |
 | Architecture and task definition | Written |
-| Sample playbooks (50) and evaluation set (60 questions) | Not started |
+| Sample playbooks (50) and evaluation set (60 questions) | Complete; the sample set builds offline with no errors |
 | Search indexing (F9a), evaluation gate (F9b), agent API | Not started |
 | Bicep templates for the resource group | Not started |
 | Microsoft Sentinel triage (phase 2) | Not started |
-
-Until the sample playbooks are added, `samples/playbooks/` contains only its README, so an offline run
-with the sample configuration produces a single-page site.
 
 ## Security
 

@@ -106,7 +106,7 @@ function Get-PlaybookParentPath {
 
 function Get-PlaybookFenceMask {
     <# Returns a bool per line: $true when the line is a code-fence line or inside a fenced block. #>
-    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines)
+    param([Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Lines)
     $mask = [bool[]]::new($Lines.Count)
     $open = $null
     for ($i = 0; $i -lt $Lines.Count; $i++) {

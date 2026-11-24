@@ -1,5 +1,10 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.5.0' }
 
+# InModuleScope below runs during discovery, so the module must be loaded then as well.
+BeforeDiscovery {
+    Import-Module (Join-Path $PSScriptRoot '../src/PlaybookSite/PlaybookSite.psd1') -Force
+}
+
 BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '../src/PlaybookSite/PlaybookSite.psd1') -Force
 }
@@ -64,6 +69,13 @@ InModuleScope PlaybookSite {
             $null = Get-PlaybookPathMap -Inventory $inventory -Config $config -Context $ctx
             $ctx.Errors.Count | Should -Be 1
             $ctx.Errors[0].Code | Should -Be 'NameCollision'
+        }
+    }
+
+    Describe 'Get-PlaybookFenceMask' {
+        It 'accepts blank lines' {
+            $mask = Get-PlaybookFenceMask -Lines "# Title`n`n``````text`n`ncode`n```````n".Split("`n")
+            $mask | Should -Be @($false, $false, $true, $true, $true, $true, $false)
         }
     }
 
@@ -299,5 +311,82 @@ Describe 'Publish-PlaybookSite -Offline (end to end)' -Tag 'Integration' {
         { Publish-PlaybookSite -ConfigPath $cfg -Offline } | Should -Throw "*SecretScan*"
         $report = Get-Content (Join-Path $root '.work/report/report.json') -Raw
         $report | Should -Not -Match 'AKIAABCDEFGHIJKLMNOP'
+    }
+}
+
+Describe 'Sample data' -Tag 'Integration' {
+    BeforeAll {
+        $repo = Resolve-Path (Join-Path $PSScriptRoot '..')
+        $python = Get-Command python, python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $canBuild = $false
+        if ($python) {
+            & $python.Source -m mkdocs --version *> $null
+            $canBuild = ($LASTEXITCODE -eq 0)
+        }
+
+        # Copies a committed config into TestDrive with absolute paths, so test runs never write to the repository.
+        function New-TestConfig([string]$Name, [string]$Source) {
+            $cfg = Get-Content (Join-Path $repo "config/$Name") -Raw | ConvertFrom-Json -AsHashtable
+            $cfg.sourcePath = (Join-Path $repo $Source)
+            $cfg.workPath = (Join-Path $TestDrive ([IO.Path]::GetFileNameWithoutExtension($Name)))
+            if (-not $cfg.ContainsKey('build')) { $cfg.build = @{} }
+            $cfg.build.python = if ($python) { $python.Source } else { 'python' }
+            $path = Join-Path $TestDrive $Name
+            $cfg | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path
+            return $path
+        }
+
+        $playbooks = @(Get-ChildItem (Join-Path $repo 'samples/playbooks') -Recurse -Filter *.md |
+                Where-Object { $_.Name -ne 'README.md' -and $_.Directory.FullName -ne (Join-Path $repo 'samples/playbooks') })
+    }
+
+    It 'contains 50 playbooks, each marked as fictional and mapped to ATT&CK' {
+        $playbooks.Count | Should -Be 50
+        foreach ($file in $playbooks) {
+            $bytes = [IO.File]::ReadAllBytes($file.FullName)
+            $text = if ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { [Text.Encoding]::Unicode.GetString($bytes) } else { [Text.Encoding]::Latin1.GetString($bytes) }
+            $text | Should -Match '(?m)^dummy: true\r?$' -Because $file.Name
+            $text | Should -Match '(?m)^  techniques: \[T\d{4}' -Because $file.Name
+        }
+    }
+
+    It 'builds offline with no errors' {
+        if (-not $canBuild) { Set-ItResult -Skipped -Because 'MkDocs is not installed'; return }
+        $cfg = New-TestConfig 'playbooksite.config.json' 'samples/playbooks'
+        $r = Publish-PlaybookSite -ConfigPath $cfg -Offline
+        $r.Result | Should -Be 'ValidatedOffline'
+        $r.Errors | Should -Be 0
+        $report = Get-Content (Join-Path $r.ReportPath 'report.json') -Raw | ConvertFrom-Json
+        $report.counts.findings | Should -Be 0
+        @($report.warnings.Code | Sort-Object) | Should -Be @('TitleAdded', 'TitleAdded', 'Transcoded', 'Transcoded')
+    }
+
+    It 'has 60 evaluation questions whose expected pages exist in the built site' {
+        if (-not $canBuild) { Set-ItResult -Skipped -Because 'MkDocs is not installed'; return }
+        $questions = @(Get-Content (Join-Path $repo 'samples/eval/golden-questions.jsonl') | ConvertFrom-Json)
+        $questions.Count | Should -Be 60
+        @($questions | Where-Object group -eq 'covered').Count | Should -Be 45
+        @($questions | Where-Object group -eq 'out_of_scope').Count | Should -Be 10
+        @($questions | Where-Object group -eq 'injection').Count | Should -Be 5
+        $docs = Join-Path $TestDrive 'playbooksite.config/docs'
+        foreach ($q in $questions | Where-Object expected_page) {
+            $page = Join-Path $docs $q.expected_page
+            Test-Path -LiteralPath $page | Should -BeTrue -Because $q.id
+            Get-Content -LiteralPath $page -Raw | Should -Match "(?m)^## $([regex]::Escape($q.expected_heading))$" -Because $q.id
+        }
+    }
+
+    It 'fails closed on the planted secrets without writing their values to the report' {
+        if (-not $canBuild) { Set-ItResult -Skipped -Because 'MkDocs is not installed'; return }
+        $cfg = New-TestConfig 'negative-secret-scan.config.json' 'samples/negative/secret-scan'
+        { Publish-PlaybookSite -ConfigPath $cfg -Offline } | Should -Throw "*SecretScan*"
+        $report = Get-Content (Join-Path $TestDrive 'negative-secret-scan.config/report/report.json') -Raw
+        ($report | ConvertFrom-Json).counts.findings | Should -BeGreaterOrEqual 4
+        $report | Should -Not -Match 'AKIAIOSFODNN7EXAMPLE|Winter2026Fabricated|10\.20\.30\.40'
+    }
+
+    It 'fails on the name collision' {
+        $cfg = New-TestConfig 'negative-name-collision.config.json' 'samples/negative/name-collision'
+        { Publish-PlaybookSite -ConfigPath $cfg -Offline } | Should -Throw "*NormalizeNames*"
     }
 }
