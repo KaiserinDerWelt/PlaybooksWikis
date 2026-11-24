@@ -19,6 +19,8 @@ subscription boundary. The module verifies these controls before deploying but d
 Phase 1 adds a question-answering agent over the same content. Phase 2 adds playbook suggestions for
 Microsoft Sentinel incidents and will be specified separately.
 
+![Roadmap](images/roadmap.png)
+
 This repository is a reference implementation. It uses 50 fictional playbooks; the 5,000-page figures
 below describe the production target.
 
@@ -101,6 +103,8 @@ module, so a content run cannot widen access.
 
 Stage behaviour as implemented is described in [architecture.md §3](architecture.md#3-publishing-pipeline).
 
+![Deployment flow](images/deployment-flow.png)
+
 | ID | Stage | Requirement | State |
 | --- | --- | --- | --- |
 | F1 | Inventory | Scan the source tree; record path, size, encoding and hash of every file | Implemented |
@@ -116,6 +120,11 @@ Stage behaviour as implemented is described in [architecture.md §3](architectur
 | F9b | Evaluate | Run the evaluation set against the staging index; fail below any threshold | Not started |
 | F10 | Deploy | Deploy to the staging slot, verify, swap, verify; switch the agent to the new index | Implemented except the index switch |
 | F11 | Report | JSON and Markdown: counts, rejections, diff, evaluation scores, commit, pipeline run, duration | Implemented except evaluation scores |
+
+F9a, F9b and the agent API make up phase 1. The agent design is described in
+[architecture.md §4](architecture.md#4-question-answering-agent-phase-1-not-implemented).
+
+![Agent architecture](images/agent-architecture.png)
 
 ## 7. Non-functional requirements
 
