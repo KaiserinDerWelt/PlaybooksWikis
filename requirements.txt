@@ -1,0 +1,3 @@
+# Pre-install on the self-hosted agent image (the agent should not pull packages at deploy time).
+mkdocs==1.6.1
+mkdocs-material==9.7.7

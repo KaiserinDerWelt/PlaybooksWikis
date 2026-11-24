@@ -1,0 +1,52 @@
+{
+  "siteName": "SOC Incident Playbooks",
+  "sourcePath": "../samples/playbooks",
+  "workPath": "../.work",
+
+  "exclude": [
+    "drafts/*",
+    "*/_archive/*"
+  ],
+
+  "slug": { "maxLength": 80 },
+
+  "content": {
+    "frontMatter": "keep",
+    "fallbackEncoding": "windows-1252",
+    "ensureTitle": true,
+    "assetExtensions": [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf"]
+  },
+
+  "links": { "allowExternal": true },
+
+  "navigation": { "orderFileName": "_order.txt" },
+
+  "secretScan": {
+    "internalCidrs": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"],
+    "internalDomainSuffixes": ["contoso.example"],
+    "internalAction": "block",
+    "allowlist": [],
+    "extraRules": [
+      { "id": "ticket-with-customer-data", "pattern": "\\bCASE-\\d{6}-PII\\b", "action": "warn" }
+    ]
+  },
+
+  "build": {
+    "python": "python",
+    "language": "en",
+    "validateAnchors": "warn"
+  },
+
+  "azure": {
+    "subscriptionId": "${AZURE_SUBSCRIPTION_ID}",
+    "tenantId": "${AZURE_TENANT_ID}",
+    "resourceGroup": "${AZURE_RESOURCE_GROUP}",
+    "appName": "${PLAYBOOK_SITE_APP_NAME}",
+    "slot": "staging",
+    "clientId": "${PLAYBOOK_SITE_AUTH_CLIENT_ID}",
+    "allowedPrincipalIds": ["${PLAYBOOK_SOC_GROUP_OBJECT_ID}"],
+    "requirePrivateEndpoint": true,
+    "checkEntraAssignment": true,
+    "deployTimeoutMinutes": 20
+  }
+}

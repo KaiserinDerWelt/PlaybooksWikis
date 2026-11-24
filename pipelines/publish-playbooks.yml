@@ -1,0 +1,90 @@
+# REFERENCE ARCHITECTURE ONLY: this pipeline is not run from the portfolio repository.
+# It shows how the module would run in Azure Pipelines in a real SOC deployment.
+#
+# SOC playbook site: validate on every PR, deploy from main after approval.
+# Requirements (see README): self-hosted pool inside the SOC VNet, workload-identity-federation
+# service connection scoped to rg-soc-playbooks, environment with an approval check.
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [playbooks/*, config/*, src/*, pipelines/*]
+
+pr:
+  branches:
+    include: [main]
+
+variables:
+  configPath: config/playbooksite.config.json
+  reportPath: $(Build.ArtifactStagingDirectory)/report
+
+stages:
+  - stage: Validate
+    displayName: Validate (offline)
+    pool:
+      name: soc-playbooks-agents
+    jobs:
+      - job: Validate
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: PowerShell@2
+            displayName: Unit tests (Pester)
+            inputs:
+              pwsh: true
+              targetType: inline
+              script: |
+                $result = Invoke-Pester -Path ./tests -Output Detailed -PassThru
+                if ($result.FailedCount -gt 0) { throw "$($result.FailedCount) Pester test(s) failed." }
+
+          - task: PowerShell@2
+            displayName: Validate and build playbooks (F1-F7)
+            inputs:
+              pwsh: true
+              targetType: inline
+              script: |
+                Import-Module ./src/PlaybookSite/PlaybookSite.psd1 -Force
+                Publish-PlaybookSite -ConfigPath '$(configPath)' -Offline -ReportPath '$(reportPath)'
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish report (no playbook content)
+            condition: always()
+            inputs:
+              targetPath: $(reportPath)
+              artifact: report-validate-$(System.JobAttempt)
+
+  - stage: Deploy
+    displayName: Deploy to App Service
+    dependsOn: Validate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: Deploy
+        pool:
+          name: soc-playbooks-agents
+        environment: soc-playbooks-prod      # add an approval check here if SOC leads sign off releases
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+
+                - task: AzurePowerShell@5
+                  displayName: Build, pre-flight, deploy (F1-F11)
+                  inputs:
+                    azureSubscription: sc-soc-playbooks-wif
+                    ScriptType: InlineScript
+                    azurePowerShellVersion: LatestVersion
+                    pwsh: true
+                    Inline: |
+                      Import-Module ./src/PlaybookSite/PlaybookSite.psd1 -Force
+                      Publish-PlaybookSite -ConfigPath '$(configPath)' -ReportPath '$(reportPath)'
+
+                - task: PublishPipelineArtifact@1
+                  displayName: Publish report (no playbook content)
+                  condition: always()
+                  inputs:
+                    targetPath: $(reportPath)
+                    artifact: report-deploy-$(System.JobAttempt)
