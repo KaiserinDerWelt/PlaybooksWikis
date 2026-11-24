@@ -1,0 +1,7 @@
+# Navigation order for this folder (original file names)
+Contención inicial.md
+Pre-encryption indicators.md
+Backup deletion attempt.md
+Mass file encryption on file share.md
+Ransom note discovered.md
+Recovery and restoration.md

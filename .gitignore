@@ -1,0 +1,22 @@
+# Build output from Publish-PlaybookSite (site, zip, manifest, reports)
+.work/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Pester output
+testResults.xml
+coverage.xml
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local environment files (may hold Azure identifiers)
+.env
+.env.*

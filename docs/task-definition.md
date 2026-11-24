@@ -4,7 +4,7 @@
 | --- | --- |
 | Owner | KaiserinDerWelt |
 | Created | 2026-11-23 |
-| Status | Design approved; content pipeline implemented; agent and infrastructure not started |
+| Status | Design approved; content pipeline and sample data complete; agent and infrastructure not started |
 | Related | [architecture.md](architecture.md) |
 
 ## 1. Summary
@@ -18,6 +18,8 @@ subscription boundary. The module verifies these controls before deploying but d
 
 Phase 1 adds a question-answering agent over the same content. Phase 2 adds playbook suggestions for
 Microsoft Sentinel incidents and will be specified separately.
+
+![Roadmap](images/roadmap.png)
 
 This repository is a reference implementation. It uses 50 fictional playbooks; the 5,000-page figures
 below describe the production target.
@@ -101,6 +103,8 @@ module, so a content run cannot widen access.
 
 Stage behaviour as implemented is described in [architecture.md §3](architecture.md#3-publishing-pipeline).
 
+![Deployment flow](images/deployment-flow.png)
+
 | ID | Stage | Requirement | State |
 | --- | --- | --- | --- |
 | F1 | Inventory | Scan the source tree; record path, size, encoding and hash of every file | Implemented |
@@ -116,6 +120,11 @@ Stage behaviour as implemented is described in [architecture.md §3](architectur
 | F9b | Evaluate | Run the evaluation set against the staging index; fail below any threshold | Not started |
 | F10 | Deploy | Deploy to the staging slot, verify, swap, verify; switch the agent to the new index | Implemented except the index switch |
 | F11 | Report | JSON and Markdown: counts, rejections, diff, evaluation scores, commit, pipeline run, duration | Implemented except evaluation scores |
+
+F9a, F9b and the agent API make up phase 1. The agent design is described in
+[architecture.md §4](architecture.md#4-question-answering-agent-phase-1-not-implemented).
+
+![Agent architecture](images/agent-architecture.png)
 
 ## 7. Non-functional requirements
 
@@ -166,11 +175,17 @@ artifacts or evaluation set. The sample is designed to exercise every stage:
 - A common section template (detection, triage, containment, eradication, recovery, escalation, owner)
   and a few pages that deviate from it
 - Accented and space-containing file names, Windows-1252 and UTF-16 files, CRLF line endings, missing
-  H1 headings, relative links, images and one name collision
-- Fabricated secrets and documentation-range IP addresses to confirm F5 blocks them
+  H1 headings, relative links and images
 - One page containing an embedded instruction to confirm the agent treats retrieved text as data
+- Each playbook mapped to MITRE ATT&CK techniques (64 in total, across 11 tactics), with sections aligned
+  to the NIST SP 800-61 incident response lifecycle
 
-Each page carries `dummy: true` in its front matter. See [samples/playbooks/README.md](../samples/playbooks/README.md).
+Inputs that must stop a run are kept in `samples/negative/` rather than in the main set, so that the main
+set can be built and indexed: fabricated secrets and a private-range IP address (F5 must block them), and
+a name collision (F2 must reject it). Indicators in the main set are defanged and use documentation-reserved
+values, so the secret scan does not flag them.
+
+Each playbook carries `dummy: true` in its front matter. See [samples/playbooks/README.md](../samples/playbooks/README.md).
 
 ## 10. Risks
 
@@ -242,10 +257,10 @@ Each page carries `dummy: true` in its front matter. See [samples/playbooks/READ
 | 1 | `PlaybookSite` PowerShell module with sample configuration | F1–F11 implemented; F9a and F9b not started |
 | 2 | Azure Pipelines definition | Written (reference only) |
 | 3 | Bicep for the SOC resource group: plan, app, slot, private endpoint, NSG, DNS link, agent, search, model, policy assignment | Not started |
-| 4 | Pester test suite | Implemented |
+| 4 | Pester test suite | Implemented (44 tests) |
 | 5 | Setup runbook: Entra app and assignment, peering, RBAC, first deployment | Not started |
 | 6 | Report from the first `-WhatIf` run against the sample playbooks | Not started |
 | 7 | Evidence for acceptance criteria 4–9 and 14 | Not started |
 | 8 | Agent API with four tools and the site chat panel | Not started |
-| 9 | 50 fictional playbooks in `samples/playbooks/` | Not started |
-| 10 | Evaluation set (60 questions) and baseline report | Not started |
+| 9 | 50 fictional playbooks in `samples/playbooks/` | Complete |
+| 10 | Evaluation set (60 questions) and baseline report | Question set complete; baseline report pending F9b |
