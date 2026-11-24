@@ -1,87 +1,131 @@
 # PlaybooksWikis
 
-**SOC incident playbooks as a private, AI-searchable documentation site on Azure.**
-A portfolio project: architecture, code and documentation for a pipeline that validates, secures
-and publishes Markdown playbooks, and (phase 1) an agent that answers analysts' questions with
-citations to the exact playbook section.
+A pipeline that publishes Markdown incident-response playbooks as a private static site on Azure App
+Service, restricted to members of a SOC group connecting from Azure Virtual Desktop. A second phase adds
+a retrieval agent that answers analyst questions from the playbooks and cites the section it used.
 
-> **This repository is a design and code sample. Nothing here is deployed, and no CI runs from it.**
-> All playbooks under `samples/` are **fictional dummy data** written for this project.
-> They contain no real company, host, user, tool or incident data and must not be used as real guidance.
+This repository is a reference implementation. Nothing in it is deployed and no pipeline runs from it.
+Content under `samples/` is fictional and must not be used as operational guidance.
 
 ![Target architecture](docs/images/target-architecture.png)
 
-## What it shows
+## Contents
 
-| Area | What is implemented or designed |
+| Path | Description |
 | --- | --- |
-| Content pipeline | PowerShell module, stages F1–F11: inventory, name and content normalization, link rewriting, secret scanning, MkDocs strict build, manifest diff, pre-flight checks, slot deploy and swap, report |
-| Security | Fail-closed runs; private endpoint only; Entra single-tenant app with SOC-only assignment; no secrets or IDs in the repo; reports never contain content or secret values |
-| AI agent (phase 1) | "Ask the playbooks": tool-using agent over Azure AI Search and Azure OpenAI, cite-or-refuse rule, injection-resistant prompting, evaluation gate in the pipeline |
-| Roadmap (phase 2) | Alert-to-playbook triage from Microsoft Sentinel incidents |
+| `src/PlaybookSite/` | PowerShell module. Exports `Publish-PlaybookSite`, `Invoke-PlaybookRollback` and `ConvertTo-PlaybookSlug`. |
+| `tests/PlaybookSite.Tests.ps1` | Pester 5 suite: unit tests for the pure functions, plus an offline end-to-end test tagged `Integration`. |
+| `config/playbooksite.config.json` | Sample configuration. Azure values are `${VAR}` placeholders resolved from the environment. |
+| `pipelines/publish-playbooks.yml` | Azure Pipelines definition: offline validation on pull requests, deployment from `main`. Reference only. |
+| `samples/playbooks/` | Location of the fictional playbook set (not yet added; see [Status](#status)). |
+| `samples/eval/` | Location of the agent's evaluation questions (not yet added). |
+| `docs/architecture.md` | Architecture, pipeline stages, agent design, operational requirements. |
+| `docs/task-definition.md` | Requirements, acceptance criteria, risks and decision log. |
 
-Full design: [docs/architecture.md](docs/architecture.md).
+## Pipeline overview
 
-## Repository layout
+`Publish-PlaybookSite` runs a fixed sequence of stages. Each stage feeds the next, and any error stops
+the run before deployment (fail-closed). A report is written on every run, including failed ones.
 
-```
-src/PlaybookSite/               PowerShell module (Publish-PlaybookSite, Invoke-PlaybookRollback)
-tests/PlaybookSite.Tests.ps1    Pester 5 tests (unit + offline end-to-end)
-config/playbooksite.config.json Configuration; Azure values are environment-variable placeholders
-pipelines/                      Azure Pipelines YAML (reference architecture, not run from this repo)
-samples/playbooks/              50 fictional playbooks (dummy data)
-samples/eval/                   Golden questions for the agent evaluation (dummy data)
-docs/                           Architecture and diagrams
-requirements.txt                MkDocs + Material, pinned
-```
+| Stage | Purpose |
+| --- | --- |
+| F1 Inventory | Enumerate and hash source files |
+| F2 NormalizeNames | Map file and folder names to URL-safe slugs; reject collisions |
+| F3 NormalizeContent | Convert to UTF-8/LF, validate front matter, add a missing H1 |
+| F4 LinksAndAssets | Rewrite relative links and images to site paths; reject unresolved targets |
+| F5 SecretScan | Pattern-based detection of credentials, tokens, internal IPs and host names |
+| F6 Navigation | Generate `mkdocs.yml`, navigation, home page and `web.config` |
+| F7 Build | `mkdocs build --strict`, content manifest, zip package |
+| F8 Diff | Compare the manifest with the one in production |
+| F9 Preflight | Read-only verification of network, authentication and Entra assignment settings |
+| F10 Deploy | Zip deploy to the staging slot, smoke test, slot swap, production smoke test |
+| F11 Report | `report.json` and `report.md`; never contains page content or secret values |
 
-## Run it locally (offline)
+Stage details and the checks performed by F9 are in [docs/architecture.md](docs/architecture.md).
 
-Requires PowerShell 7.4+, Pester 5.5+, Python 3 and `pip install -r requirements.txt`.
+## Requirements
+
+- PowerShell 7.4 or later
+- Pester 5.5 or later
+- Python 3 with the packages in `requirements.txt` (MkDocs 1.6, Material for MkDocs 9.7)
+- For stages F8 to F10 only: Az.Accounts and Az.Websites, and an authenticated Azure context
+
+## Usage
+
+Run the tests:
 
 ```powershell
 Invoke-Pester ./tests
+```
+
+The integration test is skipped if `python -m mkdocs` is unavailable.
+
+Run stages F1 to F7 locally, without Azure access:
+
+```powershell
 Import-Module ./src/PlaybookSite/PlaybookSite.psd1
 Publish-PlaybookSite -ConfigPath ./config/playbooksite.config.json -Offline
 ```
 
-`-Offline` runs F1–F7 (validate, scan, build) with no Azure access and writes the site to `.work/site`
-and a report to `.work/report`.
+Output is written under `workPath` (`.work/` with the sample configuration): the built site in
+`.work/site`, the package in `.work/site.zip` and the report in `.work/report`. The work folder is
+cleared at the start of each run and must not overlap `sourcePath`.
+
+Other run modes:
+
+| Command | Behaviour |
+| --- | --- |
+| `Publish-PlaybookSite -ConfigPath <path> -WhatIf` | Runs F1 to F8 and reports what would be deployed |
+| `Publish-PlaybookSite -ConfigPath <path> -StopAfter <stage>` | Stops after the named stage |
+| `Publish-PlaybookSite -ConfigPath <path>` | Full run; skips deployment if the content hash matches production |
+| `Publish-PlaybookSite -ConfigPath <path> -Force` | Full run; deploys even if the content is unchanged |
+| `Invoke-PlaybookRollback -ConfigPath <path>` | Swaps the staging slot (previous release) back into production |
+
+`-ReportPath` overrides the report location. The function returns an object with `Result`,
+`ContentHash`, `Errors`, `Warnings` and `ReportPath`; `Result` is one of `ValidatedOffline`, `WhatIf`,
+`NoChanges`, `Deployed`, `StoppedAfter<Stage>` or `Failed`.
 
 ## Configuration
 
-The committed config contains **variable names, not values**. `${NAME}` placeholders are resolved from
-environment variables at run time. Unset variables only matter for the Azure stages, which refuse to
-start until they are set; offline runs don't need them.
+Relative paths in the configuration file are resolved against the file's own folder. Strings of the
+form `${NAME}` are replaced with the value of the environment variable `NAME`. Unresolved placeholders
+are allowed for offline runs; the Azure stages refuse to start while any remain.
 
-| Variable | Meaning | Naming |
-| --- | --- | --- |
-| `AZURE_SUBSCRIPTION_ID` | SOC subscription | Azure SDK convention |
-| `AZURE_TENANT_ID` | Entra tenant (directory) ID | Azure SDK convention |
-| `AZURE_RESOURCE_GROUP` | Resource group holding the site, agent, search and model | Azure Developer CLI convention |
-| `PLAYBOOK_SITE_APP_NAME` | App Service app name of the site | Project-specific |
-| `PLAYBOOK_SITE_AUTH_CLIENT_ID` | Client ID of the Entra app registration used by Easy Auth | Project-specific |
-| `PLAYBOOK_SOC_GROUP_OBJECT_ID` | Object ID of the SOC group assigned to that app | Project-specific |
+| Variable | Used for |
+| --- | --- |
+| `AZURE_SUBSCRIPTION_ID` | Subscription that hosts the site |
+| `AZURE_TENANT_ID` | Entra tenant ID |
+| `AZURE_RESOURCE_GROUP` | Resource group of the web app |
+| `PLAYBOOK_SITE_APP_NAME` | App Service app name |
+| `PLAYBOOK_SITE_AUTH_CLIENT_ID` | Client ID of the Entra app registration used by App Service authentication |
+| `PLAYBOOK_SOC_GROUP_OBJECT_ID` | Object ID of the only group permitted on that app |
 
-`AZURE_CLIENT_ID` is deliberately **not** used for the Easy Auth app: Azure Identity reads it as the
-identity the code signs in as, so reusing it for a different app would make the two collide.
+`AZURE_CLIENT_ID` is not used for the App Service authentication app because Azure Identity libraries
+interpret it as the identity of the calling process.
+
+Secret-scan findings can be suppressed individually by adding their fingerprint (shown in the report)
+to `secretScan.allowlist`, after review confirms a false positive.
 
 ## Status
 
-| Deliverable | Status |
+| Item | State |
 | --- | --- |
-| Content pipeline module F1–F11 + tests | Draft complete |
-| Architecture and task definition | Complete |
-| 50 dummy playbooks, golden question set | Planned |
-| F9a Index, F9b Evaluate, agent API | Planned |
-| Bicep for the SOC resource group | Planned |
-| Phase 2: Sentinel triage | Roadmap |
+| Module, stages F1 to F11 | Implemented; not yet run against Azure |
+| Pester tests | Implemented |
+| Architecture and task definition | Written |
+| Sample playbooks (50) and evaluation set (60 questions) | Not started |
+| Search indexing (F9a), evaluation gate (F9b), agent API | Not started |
+| Bicep templates for the resource group | Not started |
+| Microsoft Sentinel triage (phase 2) | Not started |
 
-## Security notes
+Until the sample playbooks are added, `samples/playbooks/` contains only its README, so an offline run
+with the sample configuration produces a single-page site.
 
-- Never commit real playbooks, IDs or secrets. Secret scanning and push protection should stay enabled on this repository.
-- The secret scanner's test data uses obviously fake values on purpose.
+## Security
+
+Do not commit real playbooks, tenant or subscription identifiers, or credentials. Keep GitHub secret
+scanning and push protection enabled. Test fixtures for the secret scanner use fabricated values.
 
 ## License
 
-No license has been chosen yet; until one is added, all rights are reserved.
+No license has been granted. All rights reserved.

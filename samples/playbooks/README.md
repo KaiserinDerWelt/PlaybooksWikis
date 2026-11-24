@@ -1,21 +1,27 @@
-# Dummy playbooks
+# Sample playbooks
 
-**Everything in this folder is fictional.** These playbooks were written for this portfolio project.
-They contain no real company names, hosts, IP addresses, users, tools or incidents, and they are
-not real incident-response guidance. Do not use them in a real incident.
+The playbooks in this folder are fictional. They were written for this repository, describe no real
+organization, system, person or incident, and are not valid incident-response guidance.
 
-Every page carries `dummy: true` in its front matter.
+Every playbook declares `dummy: true` in its front matter.
 
-## What the set must cover (planned: 50 playbooks)
+## Planned content
 
-- About 10 incident categories (phishing, ransomware, account compromise, malware, data exfiltration,
-  insider threat, DDoS, cloud misconfiguration, lost device, vulnerability exploitation), 4–6 playbooks each
-- A common template (detection, triage, containment, eradication, recovery, escalation, owner),
-  plus a few pages that break it
-- Messy inputs on purpose: accented and spaced file names, Windows-1252 and UTF-16 files, CRLF line
-  endings, missing H1s, relative links, images, one name collision
-- Planted fake secrets and documentation-range IPs, to prove the secret scan blocks them
-- One planted prompt-injection page, to prove the agent treats playbook text as data
+The set (50 playbooks, not yet added) is designed to exercise each pipeline stage:
 
-Fake values use reserved documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and the
-reserved `.example` domain, so nothing here can match a real system.
+| Purpose | Content |
+| --- | --- |
+| Coverage | About 10 categories: phishing, ransomware, account compromise, malware, data exfiltration, insider threat, DDoS, cloud misconfiguration, lost device, vulnerability exploitation. 4–6 playbooks each. |
+| Structure | A common template (detection, triage, containment, eradication, recovery, escalation, owner), and a few pages that deviate from it. |
+| F2–F4 input handling | Accented and space-containing file names, Windows-1252 and UTF-16 encodings, CRLF line endings, missing H1 headings, relative links, images, one name collision. |
+| F5 secret scan | Fabricated credentials and internal addresses that the scan must block. |
+| Agent evaluation | One page containing an embedded instruction, to verify the agent treats retrieved text as data. |
+
+## Reserved values
+
+Addresses and domains use values reserved for documentation so they cannot match a real system: the
+three IPv4 documentation ranges TEST-NET-1, TEST-NET-2 and TEST-NET-3 (RFC 5737) and the `.example`
+top-level domain (RFC 2606). The sample configuration treats these as internal, so F5 flags them.
+
+This README is published as the sample site's home page. It deliberately contains no literal addresses,
+since the secret scan would block them.
